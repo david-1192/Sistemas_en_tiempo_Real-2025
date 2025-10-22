@@ -1,0 +1,11 @@
+{
+    "idf.flashType": "UART",
+    "idf.portWin": "COM6",
+    "idf.espIdfPathWin": "d:\\ESP-espressif\\v5.5.1\\esp-idf",
+    "idf.toolsPathWin": "C:\\Users\\chala\\.espressif",
+    "idf.pythonInstallPath": "C:\\Users\\chala\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
+    "C_Cpp.default.compilerPath": "C:/MinGW/bin/gcc.exe",
+    "cmake.configureArgs": [
+        "-DIDF_PATH=D:/ESP-espressif/v5.5.1/esp-idf"
+    ]
+}
