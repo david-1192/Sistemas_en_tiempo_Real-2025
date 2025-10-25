@@ -31,7 +31,7 @@ void app_main(void)
             printf("LED state: %u\n", led_state); 
         }
 
-        vTaskDelay(3000 / portTICK_PERIOD_MS); // Retardo de 1000 ms
+        vTaskDelay(100 / portTICK_PERIOD_MS); // Retardo de 100 ms
     }
 }
 
