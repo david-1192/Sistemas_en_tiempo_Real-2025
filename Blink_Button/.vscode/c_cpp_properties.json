@@ -5,15 +5,22 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "D:/ESP-espressif/v5.5.1/esp-idf/components/**",
-                "D:/ESP-espressif/tools/xtensa-esp32-elf/esp-*/xtensa-esp32-elf/include"
+                "D:/ESP-espressif/v5.5.1/esp-idf/components/freertos/FreeRTOS-Kernel/include",
+                "D:/ESP-espressif/v5.5.1/esp-idf/components/esp_common/include",
+                "D:/ESP-espressif/v5.5.1/esp-idf/components/xtensa/include",
+                "D:/ESP-espressif/v5.5.1/esp-idf/components/hal/include",
+                "D:/ESP-espressif/v5.5.1/esp-idf/components/soc/include"
             ],
             "defines": [
                 "ESP_PLATFORM"
             ],
-            "compilerPath": "C:/MinGW/bin/gcc.exe",
+            "compilerPath": "D:/Down/xtensa-esp-elf-14.2.0_20241119-x86_64-w64-mingw32/xtensa-esp-elf/bin/xtensa-esp-elf-gcc.exe",
             "cStandard": "c11",
             "cppStandard": "c++17",
-            "intelliSenseMode": "gcc-x64"
+            "intelliSenseMode": "gcc-x64",
+            "compileCommands": [
+                "${workspaceFolder}/build/compile_commands.json"
+            ]
         }
     ],
     "version": 4
