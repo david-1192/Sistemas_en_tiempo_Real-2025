@@ -88,47 +88,81 @@ void tarea_uart_thresholds(void *pvParameters) {
 
                     // Intenta convertir el valor a float
                     if (sscanf(valor_str, "%f", &valor) == 1) {
-                        if (valor < 0.0 || valor > 100.0) {
-                            // Valor fuera de rango permitido
-                            snprintf(respuesta, sizeof(respuesta), "Valor fuera de rango (0-100): %.2f\r\n", valor);
-                            uart_write_bytes(uart_num, respuesta, strlen(respuesta));
-                        } else {
-                            // Lee el valor actual de thresholds de la cola
-                            thresholds_t current;
-                            if (xQueuePeek(cola_thresholds, &current, 0) != pdTRUE) {
-                                // Si la cola está vacía, usa valores por defecto
-                                current.t_azul = 20.0;
-                                current.t_verde = 25.0;
-                                current.t_rojo = 40.0;
-                            }
+                        // Lee el valor actual de thresholds de la cola
+                        thresholds_t current;
+                        if (xQueuePeek(cola_thresholds, &current, 0) != pdTRUE) {
+                            // Si la cola está vacía, usa valores por defecto
+                            current.t_azul = 20.0;
+                            current.t_verde = 25.0;
+                            current.t_rojo = 40.0;
+                        }
 
-                            // Actualiza el threshold correspondiente según el color
-                            if (strncasecmp(clave, "azul", 4) == 0) {
+                        // Azul: mínimo 0, máximo 30
+                        if (strncasecmp(clave, "azul", 4) == 0) {
+                            if (valor < 0.0 || valor > 30.0) {
+                                snprintf(respuesta, sizeof(respuesta), "Threshold azul fuera de rango (0-30): %.2f\r\n", valor);
+                            } else {
                                 current.t_azul = valor;
                                 snprintf(respuesta, sizeof(respuesta), "Nuevo threshold azul: %.2f\r\n", valor);
-                            } else if (strncasecmp(clave, "verde", 5) == 0) {
+
+                                if (uxQueueMessagesWaiting(cola_thresholds) > 0) {
+                                    thresholds_t dummy;
+                                    xQueueReceive(cola_thresholds, &dummy, 0);
+                                }
+                                xQueueSend(cola_thresholds, &current, portMAX_DELAY);
+                            }
+                            uart_write_bytes(uart_num, respuesta, strlen(respuesta));
+                            continue;
+                        }
+                        // Verde: mínimo 30, máximo 50
+                        else if (strncasecmp(clave, "verde", 5) == 0) {
+                            if (valor < 30.0 || valor > 50.0) {
+                                snprintf(respuesta, sizeof(respuesta), "Threshold verde fuera de rango (30-50): %.2f\r\n", valor);
+                            } else {
                                 current.t_verde = valor;
                                 snprintf(respuesta, sizeof(respuesta), "Nuevo threshold verde: %.2f\r\n", valor);
-                            } else if (strncasecmp(clave, "rojo", 4) == 0) {
+
+                                if (uxQueueMessagesWaiting(cola_thresholds) > 0) {
+                                    thresholds_t dummy;
+                                    xQueueReceive(cola_thresholds, &dummy, 0);
+                                }
+                                xQueueSend(cola_thresholds, &current, portMAX_DELAY);
+                            }
+                            uart_write_bytes(uart_num, respuesta, strlen(respuesta));
+                            continue;
+                        }
+                        // Rojo: mínimo 50, máximo 100
+                        else if (strncasecmp(clave, "rojo", 4) == 0) {
+                            if (valor < 50.0 || valor > 100.0) {
+                                snprintf(respuesta, sizeof(respuesta), "Threshold rojo fuera de rango (50-100): %.2f\r\n", valor);
+                            } else {
                                 current.t_rojo = valor;
                                 snprintf(respuesta, sizeof(respuesta), "Nuevo threshold rojo: %.2f\r\n", valor);
-                            } else {
-                                // Si el color no es reconocido
-                                snprintf(respuesta, sizeof(respuesta), "Color no reconocido: %s\r\n", clave);
-                                uart_write_bytes(uart_num, respuesta, strlen(respuesta));
-                                continue;
-                            }
 
-                            // Elimina el valor anterior si la cola está llena (tamaño 1)
-                            if (uxQueueMessagesWaiting(cola_thresholds) > 0) {
-                                thresholds_t dummy;
-                                xQueueReceive(cola_thresholds, &dummy, 0);
+                                if (uxQueueMessagesWaiting(cola_thresholds) > 0) {
+                                    thresholds_t dummy;
+                                    xQueueReceive(cola_thresholds, &dummy, 0);
+                                }
+                                xQueueSend(cola_thresholds, &current, portMAX_DELAY);
                             }
-                            // Envía el nuevo threshold actualizado a la cola
-                            xQueueSend(cola_thresholds, &current, portMAX_DELAY);
-                            // Envía mensaje de confirmación por UART
                             uart_write_bytes(uart_num, respuesta, strlen(respuesta));
+                            continue;
+                        } else {
+                            // Si el color no es reconocido
+                            snprintf(respuesta, sizeof(respuesta), "Color no reconocido: %s\r\n", clave);
+                            uart_write_bytes(uart_num, respuesta, strlen(respuesta));
+                            continue;
                         }
+
+                        // Elimina el valor anterior si la cola está llena (tamaño 1)
+                        if (uxQueueMessagesWaiting(cola_thresholds) > 0) {
+                            thresholds_t dummy;
+                            xQueueReceive(cola_thresholds, &dummy, 0);
+                        }
+                        // Envía el nuevo threshold actualizado a la cola
+                        xQueueSend(cola_thresholds, &current, portMAX_DELAY);
+                        // Envía mensaje de confirmación por UART
+                        uart_write_bytes(uart_num, respuesta, strlen(respuesta));
                     } else {
                         // Si el valor no es válido
                         snprintf(respuesta, sizeof(respuesta), "Valor no valido: %s\r\n", valor_str);
