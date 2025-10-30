@@ -1,54 +1,91 @@
-# Sistema de Control de LED RGB con ESP32
+# LED RGB Control con ESP32 y FreeRTOS
 
-Este proyecto implementa un sistema de control de un LED RGB usando un ESP32, sensores analógicos y comunicación UART. El sistema permite cambiar el color y brillo del LED según la temperatura (termistor NTC) y el valor de un potenciómetro, además de modificar los umbrales de color en tiempo real por UART.
+Este proyecto implementa un sistema de control de un LED RGB usando un ESP32, sensores analógicos (termistor y potenciómetro), FreeRTOS y comunicación UART. Permite configurar los umbrales de color, el intervalo de impresión y el encendido/apagado del sistema tanto por UART como por botón físico.
 
 ## Características
 
-- **Control de LED RGB**: Cambia el color (rojo, verde, azul) según la temperatura medida por el termistor NTC.
-- **Brillo ajustable**: El brillo del LED se ajusta con un potenciómetro conectado al ADC.
-- **Umbrales configurables**: Los umbrales de temperatura para cada color se pueden modificar por comandos UART.
-- **Encendido/apagado**: El sistema puede encenderse o apagarse usando el botón BOOT físico o por comandos UART.
-- **FreeRTOS**: Uso de tareas, colas, semáforos y timers para la gestión concurrente de sensores y control.
+- **Control de LED RGB**: El color y brillo del LED RGB se ajusta según la temperatura y el valor del potenciómetro.
+- **Configuración dinámica**: Los umbrales de temperatura para cada color y el intervalo de impresión pueden configurarse en tiempo real por UART.
+- **Rangos solapados**: Es posible definir rangos de temperatura solapados para que varios colores se enciendan simultáneamente.
+- **Lectura de sensores**: 
+  - Termistor para medir temperatura.
+  - Potenciómetro para ajustar el brillo.
+- **Comandos UART**:
+  - Consultar configuración y voltaje del potenciómetro (`?`).
+  - Cambiar umbrales de color: `azul=min,max`, `verde=min,max`, `rojo=min,max`.
+  - Cambiar intervalo de impresión: `intervalo=segundos`.
+  - Encender/apagar sistema: `ON` / `OFF`.
+- **Botón físico**: Permite alternar entre encendido y apagado del sistema.
 
-## Hardware Requerido
+## Hardware necesario
 
-- ESP32 DevKit (o compatible)
+- ESP32 DevKit
 - LED RGB (ánodo común)
-- Termistor NTC 10kΩ
-- Potenciómetro 10kΩ
-- Botón físico (BOOT, GPIO0)
-- Cables de conexión
+- Termistor NTC (ej. 10k)
+- Potenciómetro (ej. 10k)
+- Botón (conectado a GPIO0)
+- Resistencias varias
 
-## Conexiones
+## Conexiones sugeridas
 
-- **LED RGB**: GPIO25 (Rojo), GPIO26 (Verde), GPIO27 (Azul)
-- **Termistor NTC**: Divisor de voltaje entre 3.3V y GND, salida al GPIO34 (ADC1_CHANNEL_6)
-- **Potenciómetro**: Extremos a 3.3V y GND, salida central al GPIO35 (ADC1_CHANNEL_7)
-- **Botón BOOT**: GPIO0
+| Señal         | GPIO ESP32 | Notas                |
+|---------------|------------|----------------------|
+| LED Rojo      | 25         | PWM (LEDC_CHANNEL_0) |
+| LED Verde     | 26         | PWM (LEDC_CHANNEL_1) |
+| LED Azul      | 27         | PWM (LEDC_CHANNEL_2) |
+| Termistor     | 34 (ADC1_6)| Divisor resistivo    |
+| Potenciómetro | 35 (ADC1_7)| Salida central a ADC |
+| Botón BOOT    | 0          | Pull-up interno      |
+
+## Estructura del código
+
+- `main.c`: Inicialización de hardware, recursos FreeRTOS y tareas.
+- `led_control.c/h`: Lógica de control del LED RGB según temperatura y potenciómetro.
+- `sensores.c/h`: Lectura de sensores y envío de datos por colas.
+- `uart_thresholds.c/h`: Parser de comandos UART para configuración dinámica.
+- `boton_control.c/h`: Lógica del botón físico para ON/OFF.
+- `globales.h`: Definiciones globales, pines, colas y estructura de thresholds.
 
 ## Comandos UART
 
-- `ON` / `OFF`: Enciende o apaga el sistema.
-- `azul=<valor>`: Cambia el umbral de temperatura para el color azul.
-- `verde=<valor>`: Cambia el umbral para verde.
-- `rojo=<valor>`: Cambia el umbral para rojo.
-- `?`: Consulta los valores actuales de los umbrales.
+- `?`  
+  Muestra los rangos actuales de cada color y el voltaje del potenciómetro.
 
-## Ejemplo de Uso
+- `azul=min,max`  
+  Define el rango de temperatura para el color azul.
 
-1. Conecta el hardware según el esquema.
-2. Compila y flashea el proyecto con ESP-IDF:
-   ```powershell
-   idf.py build
-   idf.py -p COMx flash monitor
-   ```
-3. Usa el botón BOOT o comandos UART para controlar el sistema.
-4. Observa el color y brillo del LED según la temperatura y el potenciómetro.
+- `verde=min,max`  
+  Define el rango de temperatura para el color verde.
 
-## Estructura del Código
+- `rojo=min,max`  
+  Define el rango de temperatura para el color rojo.
 
-- `main.c`: Inicialización de hardware, colas, semáforos y tareas.
-- `led_control.c`: Lógica de control del LED RGB.
-- `sensores.c`: Lectura de termistor y potenciómetro.
-- `uart_thresholds.c`: Recepción y procesamiento de comandos UART.
-- `boton_control.c`: Lógica del botón BOOT.
+- `intervalo=segundos`  
+  Cambia el intervalo de impresión de la temperatura (1 a 60 segundos).
+
+- `ON` / `OFF`  
+  Enciende o apaga el sistema.
+
+## Ejemplo de uso
+
+```
+azul=0,20
+verde=18,28
+rojo=25,40
+intervalo=5
+?
+```
+
+## Notas
+
+- Los rangos pueden solaparse, permitiendo que varios colores se enciendan al mismo tiempo.
+- El sistema es modular y fácilmente extensible para más sensores o salidas.
+- El voltaje del potenciómetro se muestra en la consulta `?`.
+
+## Licencia
+
+MIT
+
+---
+
+Desarrollado por [Tu Nombre o Grupo] - 2025

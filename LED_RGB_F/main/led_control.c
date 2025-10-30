@@ -9,7 +9,11 @@ void tarea_control_led(void *pvParameters) {
     bool programa_activo = false;
     comando_t cmd;
     float temp = 0, porcentaje = 0;
-    thresholds_t thresholds = {20.0, 25.0, 40.0}; // Valores por defecto de thresholds
+    thresholds_t thresholds = {
+        .azul_min = 0.0, .azul_max = 18.0,
+        .verde_min = 18.0, .verde_max = 26.0,
+        .rojo_min = 26.0, .rojo_max = 30.0
+    }; // Valores por defecto de thresholds
 
     while (1) {
         // Revisa si hay un nuevo comando
@@ -30,9 +34,12 @@ void tarea_control_led(void *pvParameters) {
             // Consulta los thresholds actuales (sin vaciar la cola)
             if (xQueuePeek(cola_thresholds, &thresholds, pdMS_TO_TICKS(10)) != pdTRUE) {
                 // Si no hay thresholds en la cola, usa los valores por defecto
-                thresholds.t_azul = 20.0;
-                thresholds.t_verde = 25.0;
-                thresholds.t_rojo = 40.0;
+                thresholds.azul_min= 0.0;
+                thresholds.azul_max= 18.0;
+                thresholds.verde_min= 23.0;
+                thresholds.verde_max= 26.0;
+                thresholds.rojo_min= 26.0;
+                thresholds.rojo_max= 30.0;
             }
 
             // Calcula el duty cycle para el PWM según el porcentaje del potenciómetro
@@ -40,15 +47,19 @@ void tarea_control_led(void *pvParameters) {
             uint32_t duty_on = 8191 - (porcentaje / 100.0) * 8191;
 
             // Selecciona el color del LED según la temperatura y los thresholds
-            if (temp < thresholds.t_azul) {
-                // Azul: solo el canal azul enciende proporcional al potenciómetro
-                ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 8191);      // Rojo OFF
+            bool rojo = (temp >= thresholds.rojo_min && temp <= thresholds.rojo_max);
+            bool verde = (temp >= thresholds.verde_min && temp <= thresholds.verde_max);
+            bool azul = (temp >= thresholds.azul_min && temp <= thresholds.azul_max);
+
+            if (rojo) {
+                // Rojo: solo el canal rojo enciende proporcional al potenciómetro
+                ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty_on);   // Rojo PWM
                 ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
                 ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1, 8191);      // Verde OFF
                 ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1);
-                ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, duty_on);   // Azul PWM
+                ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, 8191);      // Azul OFF
                 ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2);
-            } else if (temp < thresholds.t_verde) {
+            } else if (verde) {
                 // Verde: solo el canal verde enciende proporcional al potenciómetro
                 ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 8191);      // Rojo OFF
                 ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
@@ -57,12 +68,12 @@ void tarea_control_led(void *pvParameters) {
                 ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, 8191);      // Azul OFF
                 ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2);
             } else {
-                // Rojo: solo el canal rojo enciende proporcional al potenciómetro
-                ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty_on);   // Rojo PWM
+                // Azul: solo el canal azul enciende proporcional al potenciómetro
+                ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 8191);      // Rojo OFF
                 ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
                 ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1, 8191);      // Verde OFF
                 ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1);
-                ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, 8191);      // Azul OFF
+                ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2, duty_on);   // Azul PWM
                 ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_2);
             }
 

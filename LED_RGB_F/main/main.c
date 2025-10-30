@@ -24,6 +24,7 @@ SemaphoreHandle_t semaforo_pot;  // Semáforo para sincronizar la lectura del po
 TimerHandle_t timer_temp;        // Timer periódico para la temperatura
 TimerHandle_t timer_pot;         // Timer periódico para el potenciómetro
 
+int intervalo_print_temp = 5;    // Intervalo de impresión de temperatura
 void app_main(void)
 {
     // Configura el ADC para 12 bits de resolución
@@ -84,7 +85,11 @@ void app_main(void)
     cola_comando = xQueueCreate(2, sizeof(comando_t)); // Cola para comandos ON/OFF
 
     // Inicializa thresholds por defecto y los envía a la cola (para que siempre haya un valor inicial)
-    thresholds_t thresholds_init = {20.0, 30.0, 40.0};
+    thresholds_t thresholds_init = {
+        .azul_min = 0.0, .azul_max = 18.0,
+        .verde_min = 18.0, .verde_max = 26.0,
+        .rojo_min = 26.0, .rojo_max = 30.0
+    };
     xQueueSend(cola_thresholds, &thresholds_init, 0);
 
     // Crea los semáforos binarios para sincronizar las tareas de sensores

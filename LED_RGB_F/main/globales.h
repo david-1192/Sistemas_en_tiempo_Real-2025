@@ -17,9 +17,9 @@
 
 // Estructura para almacenar los thresholds de cada color
 typedef struct {
-    float t_azul;    // Umbral para el color azul (mínimo)
-    float t_verde;   // Umbral para el color verde (intermedio)
-    float t_rojo;    // Umbral para el color rojo (máximo)
+    float azul_min, azul_max;    // Umbral para el color azul (mínimo y máximo)
+    float verde_min, verde_max;   // Umbral para el color verde (mínimo y máximo)
+    float rojo_min, rojo_max;     // Umbral para el color rojo (mínimo y máximo)
 } thresholds_t;
 
 typedef enum { CMD_ON, CMD_OFF } comando_t;
@@ -33,5 +33,6 @@ extern SemaphoreHandle_t semaforo_temp; // Semáforo para sincronizar la lectura
 extern SemaphoreHandle_t semaforo_pot;  // Semáforo para sincronizar la lectura del potenciómetro
 extern TimerHandle_t timer_temp;        // Timer periódico para la temperatura
 extern TimerHandle_t timer_pot;         // Timer periódico para el potenciómetro
+extern int intervalo_print_temp;    // Intervalo de impresión de temperatura
 
 #endif
