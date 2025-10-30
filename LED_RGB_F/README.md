@@ -88,4 +88,4 @@ MIT
 
 ---
 
-Desarrollado por [Tu Nombre o Grupo] - 2025
+Desarrollado por CRISTIAN DAVID CHALACA SALAS- 2025
