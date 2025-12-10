@@ -17,6 +17,7 @@
 #include "wifi_app.h"
 #include "cJSON.h"
 #include "driver/gpio.h"
+#include "globales.h"
 
 #include <stdio.h>
 #include <stdint.h>
@@ -43,6 +44,7 @@
 
 // Tag used for ESP serial console messages
 static const char TAG[] = "http_server";
+static const char *TAG_HTTP_PROG = "http_prog";
 
 // Wifi connect status
 static int g_wifi_connect_status = NONE;
@@ -90,6 +92,18 @@ void toogle_led(void)
 	gpio_set_level(BLINK_GPIO, s_led_state);
 }
 
+static esp_err_t http_server_mode_handler(httpd_req_t *req);
+static esp_err_t http_server_manual_pwm_handler(httpd_req_t *req);
+static esp_err_t http_server_get_program_registers_handler(httpd_req_t *req);
+static esp_err_t http_server_post_program_register_handler(httpd_req_t *req);
+static esp_err_t http_server_select_register_handler(httpd_req_t *req);
+
+// Forward declaration for read_reg_data
+extern esp_err_t read_reg_data(char *data, int reg_num);
+
+/**
+ * @brief Handler for /dhtSensor.json endpoint
+ */
 static esp_err_t http_server_get_dht_sensor_readings_json_handler(httpd_req_t *req)
 {
 	ESP_LOGI(TAG, "/dhtSensor.json requested");
@@ -104,6 +118,9 @@ static esp_err_t http_server_get_dht_sensor_readings_json_handler(httpd_req_t *r
 	return ESP_OK;
 }
 
+/**
+ * @brief Handler for /toogle_led.json endpoint
+ */
 static esp_err_t http_server_togle_led_handler(httpd_req_t *req)
 {
 	ESP_LOGI(TAG, "/toogle_led.json requested");
@@ -117,44 +134,47 @@ static esp_err_t http_server_togle_led_handler(httpd_req_t *req)
 	return ESP_OK;
 }
 
+/**
+ * @brief Handler for /readreg.json endpoint
+ */
 static esp_err_t http_server_read_register_handler(httpd_req_t *req)
 {
 	ESP_LOGI(TAG, "/readreg.json requested");
 
 	char read_regs[255];
-	char register_information_read_1[12];
-	register_information_read_1[11] = 0x00;
+	char register_information_read_1[16];
+	register_information_read_1[15] = 0x00;
 	if (read_reg_data(&register_information_read_1[0], 1) != ESP_OK)
 	{
-		memset(&register_information_read_1[0], '9', 6);
+		memset(&register_information_read_1[0], '9', 15);
 	}
 
-	char register_information_read_2[12];
-	register_information_read_2[11] = 0x00;
+	char register_information_read_2[16];
+	register_information_read_2[15] = 0x00;
 	if (read_reg_data(&register_information_read_2[0], 2) != ESP_OK)
 	{
-		memset(&register_information_read_2[0], '9', 6);
+		memset(&register_information_read_2[0], '9', 15);
 	}
 
-	char register_information_read_3[12];
-	register_information_read_3[11] = 0x00;
+	char register_information_read_3[16];
+	register_information_read_3[15] = 0x00;
 	if (read_reg_data(&register_information_read_3[0], 3) != ESP_OK)
 	{
-		memset(&register_information_read_3[0], '9', 6);
+		memset(&register_information_read_3[0], '9', 15);
 	}
 
-	char register_information_read_4[12];
-	register_information_read_4[11] = 0x00;
+	char register_information_read_4[16];
+	register_information_read_4[15] = 0x00;
 	if (read_reg_data(&register_information_read_4[0], 4) != ESP_OK)
 	{
-		memset(&register_information_read_4[0], '9', 6);
+		memset(&register_information_read_4[0], '9', 15);
 	}
 
-	char register_information_read_5[12];
-	register_information_read_5[11] = 0x00;
+	char register_information_read_5[16];
+	register_information_read_5[15] = 0x00;
 	if (read_reg_data(&register_information_read_5[0], 5) != ESP_OK)
 	{
-		memset(&register_information_read_5[0], '9', 6);
+		memset(&register_information_read_5[0], '9', 15);
 	}
 
 	sprintf(read_regs,
@@ -725,28 +745,33 @@ static esp_err_t http_server_register_change_handler(httpd_req_t *req)
 	ESP_LOGI(TAG, "Received hour: %s", hour_str);
 	ESP_LOGI(TAG, "Received min: %s", min_str);
 
-	char str_to_save[12];
-	// str_to_save[11]=0x00;
-	memset(str_to_save, 0x00, 12);
+	char str_to_save[16];
+	memset(str_to_save, 0x00, 16);
 
-	if (cJSON_IsArray(selectedDays_json))
-	{
+	// Optional end time fields
+	cJSON *end_hour_json = cJSON_GetObjectItem(root, "endHours");
+	cJSON *end_min_json = cJSON_GetObjectItem(root, "endMinutes");
+
+	int sh = atoi(hour_str);
+	int sm = atoi(min_str);
+	int eh = sh;
+	int em = sm;
+	if (end_hour_json && (cJSON_IsNumber(end_hour_json) || cJSON_IsString(end_hour_json))) {
+		eh = cJSON_IsNumber(end_hour_json) ? end_hour_json->valueint : atoi(end_hour_json->valuestring);
+	}
+	if (end_min_json && (cJSON_IsNumber(end_min_json) || cJSON_IsString(end_min_json))) {
+		em = cJSON_IsNumber(end_min_json) ? end_min_json->valueint : atoi(end_min_json->valuestring);
+	}
+
+	// Build string: startHH startMM endHH endMM days(7)
+	// Ensure two-digit zero-padded fields
+	char tmp[4];
+	snprintf(str_to_save, sizeof(str_to_save), "%02d%02d%02d%02d", sh, sm, eh, em);
+	if (cJSON_IsArray(selectedDays_json)) {
 		cJSON *day_item;
-
-		// Iterate over each element in the array
-
-		// strcat(str_to_save, reg_str);
-		strcat(str_to_save, hour_str);
-		strcat(str_to_save, min_str);
-		cJSON_ArrayForEach(day_item, selectedDays_json)
-		{
-			// Check if the array element is a string
-			if (cJSON_IsString(day_item))
-			{
-				const char *day_str = day_item->valuestring;
-				strcat(str_to_save, day_str);
-				// Perform actions with the day_str
-				printf("Selected Day: %s\n", day_str);
+		cJSON_ArrayForEach(day_item, selectedDays_json) {
+			if (cJSON_IsString(day_item)) {
+				strncat(str_to_save, day_item->valuestring, 1);
 			}
 		}
 	}
@@ -893,18 +918,11 @@ static esp_err_t http_server_register_erase_handler(httpd_req_t *req)
 
 	ESP_LOGI(TAG, "received reg: %s", reg_str);
 
-	char str_to_save[12];
-	// str_to_save[11]=0x00;
-	memset(str_to_save, 0x00, 12);
-
-	// Iterate over each element in the array
-
-	// strcat(str_to_save, reg_str);
-	strcat(str_to_save, "99");
-	strcat(str_to_save, "99");
-	strcat(str_to_save, "0000000");
-
-	printf("%s\n", str_to_save);
+	char str_to_save[16];
+	memset(str_to_save, 0x00, 16);
+	// default erased = 99:99 - end 99:99 and all days 0 -> format: HHMMEEFFddddddd
+	snprintf(str_to_save, sizeof(str_to_save), "%02d%02d%02d%02d%s", 99, 99, 99, 99, "0000000");
+	ESP_LOGI(TAG, "erase -> %s", str_to_save);
 	save_reg_data(atoi(reg_str), &str_to_save[0]);
 	update_register(atoi(reg_str));
 	// Process the selected days array
@@ -1073,6 +1091,28 @@ static esp_err_t http_server_wifi_connect_status_json_handler(httpd_req_t *req)
 }
 
 /**
+ * Handler for sensors status endpoint
+ * @param req HTTP request for which the uri needs to be handled.
+ * @return ESP_OK
+ */
+static esp_err_t http_server_sensors_status_handler(httpd_req_t *req)
+{
+    char buf[200];
+    float temp = current_temperature;
+    int pir = pir_state;
+    int mode = current_mode;
+    uint32_t duty = current_pwm_duty;
+    // convertir duty 0..8191 a porcentaje
+    float pct = (duty / 8191.0f) * 100.0f;
+    snprintf(buf, sizeof(buf),
+        "{\"temperature\":%.2f,\"pir\":%d,\"mode\":%d,\"pwm_pct\":%.1f}",
+        temp, pir, mode, pct);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, buf, strlen(buf));
+    return ESP_OK;
+}
+
+/**
  * Sets up the default httpd server configuration.
  * @return http server instance handle if successful, NULL otherwise.
  */
@@ -1222,6 +1262,54 @@ static httpd_handle_t http_server_configure(void)
 			.user_ctx = NULL};
 		httpd_register_uri_handler(http_server_handle, &read_range_uri);
 
+		httpd_uri_t sensors_status = {
+			.uri = "/sensorsStatus.json",
+			.method = HTTP_GET,
+			.handler = http_server_sensors_status_handler,
+			.user_ctx = NULL
+		};
+		httpd_register_uri_handler(http_server_handle, &sensors_status);
+
+		httpd_uri_t mode_uri = {
+			.uri = "/mode.json",
+			.method = HTTP_POST,
+			.handler = http_server_mode_handler,
+			.user_ctx = NULL
+		};
+		httpd_register_uri_handler(http_server_handle, &mode_uri);
+
+		httpd_uri_t manual_pwm_uri = {
+			.uri = "/manual_pwm.json",
+			.method = HTTP_POST,
+			.handler = http_server_manual_pwm_handler,
+			.user_ctx = NULL
+		};
+		httpd_register_uri_handler(http_server_handle, &manual_pwm_uri);
+
+		httpd_uri_t uri_prog_get = {
+			.uri = "/program_registers.json",
+			.method = HTTP_GET,
+			.handler = http_server_get_program_registers_handler,
+			.user_ctx = NULL
+		};
+		httpd_register_uri_handler(http_server_handle, &uri_prog_get);
+
+		httpd_uri_t uri_prog_post = {
+			.uri = "/program_register.json",
+			.method = HTTP_POST,
+			.handler = http_server_post_program_register_handler,
+			.user_ctx = NULL
+		};
+		httpd_register_uri_handler(http_server_handle, &uri_prog_post);
+
+		httpd_uri_t uri_select = {
+			.uri = "/select_register.json",
+			.method = HTTP_POST,
+			.handler = http_server_select_register_handler,
+			.user_ctx = NULL
+		};
+		httpd_register_uri_handler(http_server_handle, &uri_select);
+
 		return http_server_handle;
 	}
 
@@ -1263,4 +1351,291 @@ void http_server_fw_update_reset_callback(void *arg)
 {
 	ESP_LOGI(TAG, "http_server_fw_update_reset_callback: Timer timed-out, restarting the device");
 	esp_restart();
+}
+
+static esp_err_t http_server_mode_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "/mode.json requested");
+
+    size_t content_len = req->content_len;
+    if (content_len == 0) {
+        int hdr_len = httpd_req_get_hdr_value_len(req, "Content-Length");
+        if (hdr_len > 0) {
+            char *hdr = malloc(hdr_len + 1);
+            if (hdr) {
+                if (httpd_req_get_hdr_value_str(req, "Content-Length", hdr, hdr_len + 1) == ESP_OK) {
+                    content_len = (size_t)atoi(hdr);
+                }
+                free(hdr);
+            }
+        }
+    }
+
+    if (content_len == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid Content-Length");
+        return ESP_OK;
+    }
+
+    char *buf = malloc(content_len + 1);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_OK;
+    }
+
+    size_t received = 0;
+    while (received < content_len) {
+        int r = httpd_req_recv(req, buf + received, content_len - received);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT) {
+            continue;
+        } else if (r <= 0) {
+            free(buf);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive body");
+            return ESP_OK;
+        }
+        received += r;
+    }
+    buf[content_len] = '\0';
+    ESP_LOGI(TAG, "mode body: %s", buf);
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        ESP_LOGI(TAG, "Invalid JSON");
+        free(buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_OK;
+    }
+    free(buf);
+
+    cJSON *mode_j = cJSON_GetObjectItem(root, "mode");
+    cJSON *min_j  = cJSON_GetObjectItem(root, "temp_min");
+    cJSON *max_j  = cJSON_GetObjectItem(root, "temp_max");
+    cJSON *pwm_j  = cJSON_GetObjectItem(root, "pwm");
+	cJSON *prog_j = cJSON_GetObjectItem(root, "program_reg");
+
+    // Procesar modo
+    if (mode_j && cJSON_IsNumber(mode_j)) {
+        current_mode = mode_j->valueint;
+        ESP_LOGI(TAG, "Modo configurado: %d", current_mode);
+    }
+
+    // Si es modo MANUAL y viene PWM, guardar el PWM
+    if (pwm_j && cJSON_IsNumber(pwm_j)) {
+        uint32_t pwm_pct = (uint32_t)pwm_j->valueint;
+        if (pwm_pct > 100) pwm_pct = 100;
+        
+        manual_pwm_duty = pwm_pct;
+        save_manual_pwm(pwm_pct);
+        ESP_LOGI(TAG, "PWM manual establecido en modo.json: %lu%%", pwm_pct);
+    }
+
+	// Si viene selección de registro para PROGRAMADO, guardarla
+	if (prog_j && cJSON_IsNumber(prog_j)) {
+		int reg = prog_j->valueint;
+		if (reg < 0) reg = 0;
+		if (reg > NUM_REGISTERS_AV) reg = NUM_REGISTERS_AV;
+		wifi_app_set_selected_register((uint8_t)reg);
+		ESP_LOGI(TAG, "Selected program register set to %d", reg);
+	}
+
+    // Procesar y guardar rango de temperatura (solo para AUTOMATICO)
+    if (current_mode == 1) {  // AUTOMATICO
+        float new_temp_min = current_temp_min;
+        float new_temp_max = current_temp_max;
+
+        if (min_j && (cJSON_IsNumber(min_j) || cJSON_IsString(min_j))) {
+            new_temp_min = (float)(cJSON_IsNumber(min_j) ? min_j->valuedouble : atof(min_j->valuestring));
+        }
+
+        if (max_j && (cJSON_IsNumber(max_j) || cJSON_IsString(max_j))) {
+            new_temp_max = (float)(cJSON_IsNumber(max_j) ? max_j->valuedouble : atof(max_j->valuestring));
+        }
+
+        // Guardar en flash si hay cambios
+        if (new_temp_min != current_temp_min || new_temp_max != current_temp_max) {
+            current_temp_min = new_temp_min;
+            current_temp_max = new_temp_max;
+            save_temp_range(new_temp_min, new_temp_max);
+            ESP_LOGI(TAG, "Rango de temperatura guardado: %.2f - %.2f", new_temp_min, new_temp_max);
+        }
+    }
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_hdr(req, "Connection", "close");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+static esp_err_t http_server_manual_pwm_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "/manual_pwm.json requested");
+
+    size_t content_len = req->content_len;
+    if (content_len == 0) {
+        int hdr_len = httpd_req_get_hdr_value_len(req, "Content-Length");
+        if (hdr_len > 0) {
+            char *hdr = malloc(hdr_len + 1);
+            if (hdr) {
+                if (httpd_req_get_hdr_value_str(req, "Content-Length", hdr, hdr_len + 1) == ESP_OK) {
+                    content_len = (size_t)atoi(hdr);
+                }
+                free(hdr);
+            }
+        }
+    }
+
+    if (content_len == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid Content-Length");
+        return ESP_OK;
+    }
+
+    char *buf = malloc(content_len + 1);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_OK;
+    }
+
+    size_t received = 0;
+    while (received < content_len) {
+        int r = httpd_req_recv(req, buf + received, content_len - received);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT) {
+            continue;
+        } else if (r <= 0) {
+            free(buf);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive body");
+            return ESP_OK;
+        }
+        received += r;
+    }
+    buf[content_len] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        free(buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_OK;
+    }
+    free(buf);
+
+    cJSON *pwm_j = cJSON_GetObjectItem(root, "pwm");
+    if (pwm_j && cJSON_IsNumber(pwm_j)) {
+        uint32_t pwm_pct = (uint32_t)pwm_j->valueint;
+        if (pwm_pct > 100) pwm_pct = 100;
+        
+        manual_pwm_duty = pwm_pct;
+        save_manual_pwm(pwm_pct);
+        ESP_LOGI(TAG, "PWM manual establecido: %lu%%", pwm_pct);
+    }
+
+    cJSON_Delete(root);
+
+    httpd_resp_set_hdr(req, "Connection", "close");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+/* GET /program_registers.json  -> devuelve array de registros + selected */
+esp_err_t http_server_get_program_registers_handler(httpd_req_t *req)
+{
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Internal Server Error");
+        return ESP_FAIL;
+    }
+
+    cJSON *arr = cJSON_CreateArray();
+    if (!arr) { cJSON_Delete(root); httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Internal Server Error"); return ESP_FAIL; }
+
+    for (uint8_t i = 0; i < NUM_REGISTERS_AV; ++i) {
+        program_register_t r;
+        esp_err_t ret = load_program_register(i, &r);
+        cJSON *obj = cJSON_CreateObject();
+        if (!obj) continue;
+        cJSON_AddNumberToObject(obj, "idx", i);
+        if (ret == ESP_OK) {
+            cJSON_AddNumberToObject(obj, "start_hour", r.start_hour);
+            cJSON_AddNumberToObject(obj, "start_min", r.start_min);
+            cJSON_AddNumberToObject(obj, "end_hour", r.end_hour);
+            cJSON_AddNumberToObject(obj, "end_min", r.end_min);
+            cJSON_AddNumberToObject(obj, "weekdays", r.weekdays); // bitmask
+        } else {
+            cJSON_AddNumberToObject(obj, "start_hour", -1);
+        }
+        cJSON_AddItemToArray(arr, obj);
+    }
+    cJSON_AddItemToObject(root, "registers", arr);
+    cJSON_AddNumberToObject(root, "selected", wifi_app_get_selected_register());
+
+    char *out = cJSON_PrintUnformatted(root);
+    if (out) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, out);
+        free(out);
+    } else {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Internal Server Error");
+    }
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
+/* POST /program_register.json  -> body JSON { idx, start_hour, start_min, end_hour, end_min, weekdays } */
+esp_err_t http_server_post_program_register_handler(httpd_req_t *req)
+{
+    size_t sz = req->content_len;
+    if (sz == 0 || sz > 1024) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request");
+        return ESP_FAIL;
+    }
+    char *buf = malloc(sz + 1);
+    if (!buf) { httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Internal Server Error"); return ESP_FAIL; }
+    if (httpd_req_recv(req, buf, sz) != (int)sz) { free(buf); httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+    buf[sz] = 0;
+
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+    if (!root) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+
+    cJSON *jidx = cJSON_GetObjectItem(root, "idx");
+    if (!cJSON_IsNumber(jidx)) { cJSON_Delete(root); httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+    int idx = jidx->valueint;
+    if (idx < 0 || idx >= NUM_REGISTERS_AV) { cJSON_Delete(root); httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+
+    program_register_t r;
+    memset(&r, 0, sizeof(r));
+    r.start_hour = (uint8_t) cJSON_GetObjectItem(root, "start_hour")->valueint;
+    r.start_min  = (uint8_t) cJSON_GetObjectItem(root, "start_min")->valueint;
+    r.end_hour   = (uint8_t) cJSON_GetObjectItem(root, "end_hour")->valueint;
+    r.end_min    = (uint8_t) cJSON_GetObjectItem(root, "end_min")->valueint;
+    r.weekdays   = (uint8_t) cJSON_GetObjectItem(root, "weekdays")->valueint;
+
+    esp_err_t err = save_program_register((uint8_t)idx, &r);
+    cJSON_Delete(root);
+    if (err == ESP_OK) {
+        httpd_resp_sendstr(req, "{\"ok\":1}");
+        return ESP_OK;
+    } else {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Internal Server Error");
+        return ESP_FAIL;
+    }
+}
+
+/* POST /select_register.json -> body JSON { selected: <number> }  (use 255 to deselect) */
+esp_err_t http_server_select_register_handler(httpd_req_t *req)
+{
+    size_t sz = req->content_len;
+    if (sz == 0 || sz > 128) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+    char buf[128];
+    if (httpd_req_recv(req, buf, sz) != (int)sz) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+    buf[sz] = 0;
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) { httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+    cJSON *jsel = cJSON_GetObjectItem(root, "selected");
+    if (!cJSON_IsNumber(jsel)) { cJSON_Delete(root); httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+    int sel = jsel->valueint;
+    if (sel < 0 || sel > 255) { cJSON_Delete(root); httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad Request"); return ESP_FAIL; }
+    if (sel == 255) wifi_app_set_selected_register(0xFF);
+    else wifi_app_set_selected_register((uint8_t)sel);
+    cJSON_Delete(root);
+    httpd_resp_sendstr(req, "{\"ok\":1}");
+    return ESP_OK;
 }

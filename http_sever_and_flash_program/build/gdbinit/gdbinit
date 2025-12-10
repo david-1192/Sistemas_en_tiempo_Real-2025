@@ -1,0 +1,2 @@
+source /home/davidpc/Sistemas_en_tiempo_Real-2025/http_sever_and_flash_program/build/gdbinit/symbols
+source /home/davidpc/Sistemas_en_tiempo_Real-2025/http_sever_and_flash_program/build/gdbinit/connect

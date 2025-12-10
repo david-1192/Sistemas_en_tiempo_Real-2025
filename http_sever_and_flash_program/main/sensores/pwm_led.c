@@ -12,6 +12,9 @@
 #define PWM_DUTY_RES    LEDC_TIMER_13_BIT  // 13 bits = 0-8191
 #define PWM_FREQUENCY   1000               // 1 kHz
 
+// Variables globales
+static int g_led_gpio = -1;
+
 // ============================================================================
 // Tarea que controla el LED con PWM
 // ============================================================================
@@ -29,6 +32,8 @@ void tarea_pwm_led(void *pvParameters)
             // Limita el duty cycle al rango válido (0-8191)
             uint32_t duty = comando.duty;
             if (duty > 8191) duty = 8191;
+
+            current_pwm_duty = duty;
 
             // Aplica el nuevo duty cycle al LED
             ledc_set_duty(PWM_SPEED_MODE, PWM_CHANNEL, duty);
@@ -48,10 +53,12 @@ void tarea_pwm_led(void *pvParameters)
 // ============================================================================
 void pwm_led_init(int gpio_num)
 {
+    g_led_gpio = gpio_num;   // <-- inicializa la variable global del gpio
+
     printf("\n========== INICIALIZANDO SISTEMA PWM LED ==========\n");
 
-    // Crear la cola PWM (capacidad: 10 comandos)
-    cola_pwm_led = xQueueCreate(10, sizeof(pwm_command_t));
+    // Crear la cola PWM (capacidad: 20 comandos - aumentado para evitar saturación)
+    cola_pwm_led = xQueueCreate(20, sizeof(pwm_command_t));
     if (cola_pwm_led == NULL) {
         printf("ERROR: No se pudo crear la cola PWM\n");
         return;

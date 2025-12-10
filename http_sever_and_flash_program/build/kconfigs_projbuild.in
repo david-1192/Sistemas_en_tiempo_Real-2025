@@ -1,0 +1,6 @@
+source "/home/davidpc/esp/v5.5.1/esp-idf/components/bootloader/Kconfig.projbuild"
+source "/home/davidpc/esp/v5.5.1/esp-idf/components/esp_app_format/Kconfig.projbuild"
+source "/home/davidpc/esp/v5.5.1/esp-idf/components/esp_rom/Kconfig.projbuild"
+source "/home/davidpc/esp/v5.5.1/esp-idf/components/esptool_py/Kconfig.projbuild"
+source "/home/davidpc/esp/v5.5.1/esp-idf/components/partition_table/Kconfig.projbuild"
+source "/home/davidpc/Sistemas_en_tiempo_Real-2025/http_sever_and_flash_program/main/Kconfig.projbuild"

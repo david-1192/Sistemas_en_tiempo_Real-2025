@@ -20,13 +20,16 @@
 #include "tasks_common.h"
 #include "wifi_app.h"
 #include "esp_sntp.h"
+#include "globales.h"
+#include "pwm_led.h"
 
 // Tag used for ESP serial console messages
 static const char TAG [] = "wifi_app";
 
 SemaphoreHandle_t mySemaphore;
 
-register_saved_e register_readings_from_flash [NUM_REGISTERS_AV];// registers
+static program_register_t s_program_regs[NUM_REGISTERS_AV];
+static uint8_t g_selected_register = 0; // 0 = none, 1..N = register index
 
 // Used for returning the WiFi configuration
 wifi_config_t *wifi_config = NULL;
@@ -44,6 +47,9 @@ esp_netif_t* esp_netif_ap  = NULL;
 bool time_was_synchronized;
 
 extern uint8_t s_led_state;
+
+// Forward declaration
+static void wifi_app_connect_sta(void);
 
 
 
@@ -265,108 +271,63 @@ esp_err_t read_reg_data(char *str_to_save ,uint8_t register_num){
 
 }
 void update_register(int reg_to_update){
-	char register_information_read[12];
-	register_information_read[11] = 0x00;
-	char hora_min_str[3];
-	hora_min_str[2] = 0x00;
-	char day[2];
-	day[1] = 0x00;
-	register_information_read[11] = 0x00;
-	if ( read_reg_data( &register_information_read[0], reg_to_update ) == ESP_OK ){
-		
-		strncpy(&hora_min_str[0], &register_information_read[0], 2);
-		register_readings_from_flash[reg_to_update-1].hour = atoi(hora_min_str);
-		
-		strncpy(&hora_min_str[0], &register_information_read[2], 2);
-		register_readings_from_flash[reg_to_update-1].min = atoi(hora_min_str);
+    char register_information_read[16];
+    register_information_read[15] = 0x00;
+    char tmp_str[3];
+    tmp_str[2] = 0x00;
+    char day[2];
+    day[1] = 0x00;
+    if ( read_reg_data( &register_information_read[0], reg_to_update ) == ESP_OK ){
+        // Format: HHMMEEFFddddddd  (startHH startMM endHH endMM 7 day flags)
+        strncpy(&tmp_str[0], &register_information_read[0], 2);
+        s_program_regs[reg_to_update-1].start_hour = atoi(tmp_str);
 
-		strncpy(&day[0], &register_information_read[4], 1);
-		register_readings_from_flash[reg_to_update-1].monday = atoi(day);
+        strncpy(&tmp_str[0], &register_information_read[2], 2);
+        s_program_regs[reg_to_update-1].start_min = atoi(tmp_str);
 
-		strncpy(&day[0], &register_information_read[5], 1);
-		register_readings_from_flash[reg_to_update-1].tuesday = atoi(day);
+        strncpy(&tmp_str[0], &register_information_read[4], 2);
+        s_program_regs[reg_to_update-1].end_hour = atoi(tmp_str);
 
-		strncpy(&day[0], &register_information_read[6], 1);
-		register_readings_from_flash[reg_to_update-1].wednesday = atoi(day);
+        strncpy(&tmp_str[0], &register_information_read[6], 2);
+        s_program_regs[reg_to_update-1].end_min = atoi(tmp_str);
 
-		strncpy(&day[0], &register_information_read[7], 1);
-		register_readings_from_flash[reg_to_update-1].thursday = atoi(day);
+        // Build weekdays bitmask from individual day bits
+        uint8_t weekdays = 0;
+        strncpy(&day[0], &register_information_read[8], 1);
+        if (atoi(day)) weekdays |= (1 << 0);  // Monday
 
-		strncpy(&day[0], &register_information_read[8], 1);
-		register_readings_from_flash[reg_to_update-1].friday = atoi(day);
+        strncpy(&day[0], &register_information_read[9], 1);
+        if (atoi(day)) weekdays |= (1 << 1);  // Tuesday
 
-		strncpy(&day[0], &register_information_read[9], 1);
-		register_readings_from_flash[reg_to_update-1].saturday = atoi(day);
+        strncpy(&day[0], &register_information_read[10], 1);
+        if (atoi(day)) weekdays |= (1 << 2);  // Wednesday
 
-		strncpy(&day[0], &register_information_read[10], 1);
-		register_readings_from_flash[reg_to_update-1].sunday = atoi(day);
+        strncpy(&day[0], &register_information_read[11], 1);
+        if (atoi(day)) weekdays |= (1 << 3);  // Thursday
 
-		ESP_LOGI(TAG, "hora: %d, min: %d, day0: %d, day1: %d, day2: %d, day3: %d, day4: %d, day5: %d, day6: %d", register_readings_from_flash[reg_to_update-1].hour, register_readings_from_flash[reg_to_update-1].min, register_readings_from_flash[reg_to_update-1].monday ,
-		register_readings_from_flash[reg_to_update-1].tuesday , register_readings_from_flash[reg_to_update-1].wednesday , register_readings_from_flash[reg_to_update-1].thursday  , register_readings_from_flash[reg_to_update-1].friday 
-		, register_readings_from_flash[reg_to_update-1].saturday, register_readings_from_flash[reg_to_update-1].sunday);
-	}
+        strncpy(&day[0], &register_information_read[12], 1);
+        if (atoi(day)) weekdays |= (1 << 4);  // Friday
 
-	
+        strncpy(&day[0], &register_information_read[13], 1);
+        if (atoi(day)) weekdays |= (1 << 5);  // Saturday
+
+        strncpy(&day[0], &register_information_read[14], 1);
+        if (atoi(day)) weekdays |= (1 << 6);  // Sunday
+
+        s_program_regs[reg_to_update-1].weekdays = weekdays;
+
+        ESP_LOGI(TAG, "reg%d start %02d:%02d end %02d:%02d weekdays 0x%02x",
+                 reg_to_update,
+                 s_program_regs[reg_to_update-1].start_hour,
+                 s_program_regs[reg_to_update-1].start_min,
+                 s_program_regs[reg_to_update-1].end_hour,
+                 s_program_regs[reg_to_update-1].end_min,
+                 s_program_regs[reg_to_update-1].weekdays);
+    }
 }
-void initialize_registers( void ){
-	
-	char register_information_read[12];
-	register_information_read[11] = 0x00;
-	char hora_min_str[3];
-	hora_min_str[2] = 0x00;
-	char day[2];
-	day[1] = 0x00;
-	
-	
-	for (int i = 0; i < NUM_REGISTERS_AV; i++){
-		if ( read_reg_data( &register_information_read[0], i+1 ) == ESP_OK ){
-			
-			strncpy(&hora_min_str[0], &register_information_read[0], 2);
-			register_readings_from_flash[i].hour = atoi(hora_min_str);
-			
-			strncpy(&hora_min_str[0], &register_information_read[2], 2);
-			register_readings_from_flash[i].min = atoi(hora_min_str);
 
-			strncpy(&day[0], &register_information_read[4], 1);
-			register_readings_from_flash[i].monday = atoi(day);
 
-			strncpy(&day[0], &register_information_read[5], 1);
-			register_readings_from_flash[i].tuesday = atoi(day);
 
-			strncpy(&day[0], &register_information_read[6], 1);
-			register_readings_from_flash[i].wednesday = atoi(day);
-
-			strncpy(&day[0], &register_information_read[7], 1);
-			register_readings_from_flash[i].thursday = atoi(day);
-
-			strncpy(&day[0], &register_information_read[8], 1);
-			register_readings_from_flash[i].friday = atoi(day);
-
-			strncpy(&day[0], &register_information_read[9], 1);
-			register_readings_from_flash[i].saturday = atoi(day);
-
-			strncpy(&day[0], &register_information_read[10], 1);
-			register_readings_from_flash[i].sunday = atoi(day);
-
-			//ESP_LOGI(TAG, "hora: %d, min: %d, day0: %d, day1: %d, day2: %d, day3: %d, day4: %d, day5: %d, day6: %d", register_readings_from_flash[i].hour, register_readings_from_flash[i].min, register_readings_from_flash[i].monday ,
-			//register_readings_from_flash[i].tuesday , register_readings_from_flash[i].wednesday , register_readings_from_flash[i].thursday  , register_readings_from_flash[i].friday 
-			//, register_readings_from_flash[i].saturday, register_readings_from_flash[i].sunday);
-		}
-		else{
-			register_readings_from_flash[i].hour = 99;
-			register_readings_from_flash[i].min = 99;
-			register_readings_from_flash[i].monday = 0;
-			register_readings_from_flash[i].tuesday = 0;
-			register_readings_from_flash[i].wednesday = 0;
-			register_readings_from_flash[i].thursday = 0;
-			register_readings_from_flash[i].friday = 0;
-			register_readings_from_flash[i].sunday = 0;
-			register_readings_from_flash[i].saturday = 0;
-
-		}
-
-	}
-}
 
 void load_wifi_credentials(char *ssid, char *password) {
     nvs_handle_t nvs_handle;
@@ -557,12 +518,21 @@ static void wifi_app_event_handler(void *arg, esp_event_base_t event_base, int32
 	{
 		switch (event_id)
 		{
-			case IP_EVENT_STA_GOT_IP:
-				ESP_LOGI(TAG, "IP_EVENT_STA_GOT_IP");
+				case IP_EVENT_STA_GOT_IP: {
+					ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+					ESP_LOGI(TAG, "IP_EVENT_STA_GOT_IP - Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
 
-				wifi_app_send_message(WIFI_APP_MSG_STA_CONNECTED_GOT_IP);
+					// Optionally disable the AP interface so the ESP32 stops advertising its AP SSID
+					if (esp_wifi_set_mode(WIFI_MODE_STA) == ESP_OK) {
+						ESP_LOGI(TAG, "Switched to STA mode (AP disabled)");
+					} else {
+						ESP_LOGE(TAG, "Failed to switch WiFi mode to STA");
+					}
 
-				break;
+					wifi_app_send_message(WIFI_APP_MSG_STA_CONNECTED_GOT_IP);
+
+					break;
+				}
 		}
 	}
 }
@@ -694,7 +664,11 @@ static void wifi_app_task(void *pvParameters)
 					ESP_LOGI(TAG, "WIFI_APP_MSG_START_HTTP_SERVER");
 
 					http_server_start();
-					rgb_led_http_server_started();
+					/* Notify PWM LED: indicate HTTP server started (50% duty) */
+					if (cola_pwm_led != NULL) {
+						pwm_command_t cmd = { .duty = 4096 };
+						xQueueSend(cola_pwm_led, &cmd, pdMS_TO_TICKS(100));
+					}
 
 					break;
 
@@ -715,7 +689,11 @@ static void wifi_app_task(void *pvParameters)
 				case WIFI_APP_MSG_STA_CONNECTED_GOT_IP:
 					ESP_LOGI(TAG, "WIFI_APP_MSG_STA_CONNECTED_GOT_IP");
 
-					rgb_led_wifi_connected();
+					/* Notify PWM LED: indicate WiFi connected (100% duty) */
+					if (cola_pwm_led != NULL) {
+						pwm_command_t cmd = { .duty = 8191 };
+						xQueueSend(cola_pwm_led, &cmd, pdMS_TO_TICKS(100));
+					}
 					http_server_monitor_send_message(HTTP_MSG_WIFI_CONNECT_SUCCESS);
 
 					break;
@@ -747,61 +725,20 @@ wifi_config_t* wifi_app_get_wifi_config(void)
 	return wifi_config;
 }
 
-bool compare_hour_day_structs (struct tm timeinfo, register_saved_e aux_reg ){
+bool compare_hour_day_structs (struct tm timeinfo, program_register_t aux_reg ){
 	static const char TAG2 [] = "comparing_app";
 
-// chekcing ll the day
-	if(timeinfo.tm_wday == 0){
-		if( aux_reg.sunday != 1 ){	
-			ESP_LOGI(TAG2, "WRONG DAY");
-			return false;		
-		}
+	// Map tm_wday (0=Sun..6=Sat) to bit index (0=Mon..6=Sun)
+	uint8_t bit_index = (timeinfo.tm_wday == 0) ? 6 : (timeinfo.tm_wday - 1);
+	uint8_t bit = (1 << bit_index);
+	
+	if ((aux_reg.weekdays & bit) == 0) {
+		ESP_LOGI(TAG2, "WRONG DAY");
+		return false;
 	}
 
-	if(timeinfo.tm_wday == 1){
-		if( aux_reg.monday != 1 ){	
-			ESP_LOGI(TAG2, "WRONG DAY");
-			return false;		
-		}
-	}
-
-	if(timeinfo.tm_wday == 2){
-		if( aux_reg.tuesday != 1 ){	
-			ESP_LOGI(TAG2, "WRONG DAY");
-			return false;		
-		}
-	}
-
-	if(timeinfo.tm_wday == 3){
-		if( aux_reg.wednesday != 1 ){	
-			ESP_LOGI(TAG2, "WRONG DAY");
-			return false;		
-		}
-	}
-
-	if(timeinfo.tm_wday == 4){
-		if( aux_reg.thursday != 1 ){	
-			ESP_LOGI(TAG2, "WRONG DAY");
-			return false;		
-		}
-	}
-
-	if(timeinfo.tm_wday == 5){
-		if( aux_reg.friday != 1 ){	
-			ESP_LOGI(TAG2, "WRONG DAY");
-			return false;		
-		}
-	}
-
-	if(timeinfo.tm_wday == 6){
-		if( aux_reg.saturday != 1 ){	
-			ESP_LOGI(TAG2, "WRONG DAY");
-			return false;		
-		}
-	}
-
-	if( timeinfo.tm_hour == aux_reg.hour ){
-		if( timeinfo.tm_min == aux_reg.min ){
+	if( timeinfo.tm_hour == aux_reg.start_hour ){
+		if( timeinfo.tm_min == aux_reg.start_min ){
 			// we should activate the motor
 			toogle_led();
 			vTaskDelay(40000 / portTICK_PERIOD_MS);
@@ -848,7 +785,7 @@ void task_compare_hour_to_execute_action( void *pvParameters ) {
 
 		for(int i = 0; i< NUM_REGISTERS_AV; i++){
 			ESP_LOGI(TAG, "Revisando registro: %d", i);
-			compare_hour_day_structs (timeinfo,  register_readings_from_flash[i] );
+			compare_hour_day_structs (timeinfo,  s_program_regs[i] );
 
 		}
 
@@ -866,8 +803,11 @@ void wifi_app_start(void)
 {
 	ESP_LOGI(TAG, "STARTING WIFI APPLICATION");
 
-	// Start WiFi started LED
-	rgb_led_wifi_app_started();
+	// Notify PWM LED: wifi app started (25% duty)
+	if (cola_pwm_led != NULL) {
+		pwm_command_t cmd = { .duty = 2048 };
+		xQueueSend(cola_pwm_led, &cmd, pdMS_TO_TICKS(100));
+	}
 
 	// Disable default WiFi logging messages
 	esp_log_level_set("wifi", ESP_LOG_NONE);
@@ -886,6 +826,141 @@ void wifi_app_start(void)
 	xTaskCreatePinnedToCore(&task_compare_hour_to_execute_action, "checking_app_task", 4096, NULL, 5, NULL, 1);
 	
 	
+}
+
+/* Programmed register management - implementation */
+
+#include "wifi_app.h"
+#include "nvs_flash.h"
+#include "nvs.h"
+#include <string.h>
+#include <time.h>
+
+static program_register_t s_program_regs[NUM_REGISTERS_AV];
+static uint8_t s_selected_register = 0xFF; // 0xFF = none
+
+static esp_err_t _nvs_open(nvs_handle_t *handle, nvs_open_mode_t mode)
+{
+    esp_err_t err = nvs_open(PROGRAM_NVS_NAMESPACE, mode, handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        // Namespace may not exist yet — create by opening RW
+        if (mode == NVS_READONLY) {
+            // try RW instead
+            err = nvs_open(PROGRAM_NVS_NAMESPACE, NVS_READWRITE, handle);
+        }
+    }
+    return err;
+}
+
+esp_err_t save_program_register(uint8_t idx, const program_register_t *reg)
+{
+    if (idx >= NUM_REGISTERS_AV || reg == NULL) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t handle;
+    esp_err_t err = _nvs_open(&handle, NVS_READWRITE);
+    if (err != ESP_OK) return err;
+    char key[16];
+    snprintf(key, sizeof(key), "reg%u", idx);
+    err = nvs_set_blob(handle, key, reg, sizeof(*reg));
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    if (err == ESP_OK) memcpy(&s_program_regs[idx], reg, sizeof(*reg));
+    return err;
+}
+
+esp_err_t load_program_register(uint8_t idx, program_register_t *reg)
+{
+    if (idx >= NUM_REGISTERS_AV || reg == NULL) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t handle;
+    esp_err_t err = _nvs_open(&handle, NVS_READONLY);
+    if (err != ESP_OK) return err;
+    char key[16];
+    snprintf(key, sizeof(key), "reg%u", idx);
+    size_t required = sizeof(*reg);
+    err = nvs_get_blob(handle, key, reg, &required);
+    nvs_close(handle);
+    if (err == ESP_OK && required == sizeof(*reg)) {
+        memcpy(&s_program_regs[idx], reg, sizeof(*reg));
+    }
+    return err;
+}
+
+void wifi_app_set_selected_register(uint8_t reg)
+{
+    nvs_handle_t handle;
+    if (reg >= NUM_REGISTERS_AV) reg = 0xFF;
+    if (_nvs_open(&handle, NVS_READWRITE) == ESP_OK) {
+        uint8_t val = reg;
+        nvs_set_u8(handle, "sel", val);
+        nvs_commit(handle);
+        nvs_close(handle);
+    }
+    s_selected_register = reg;
+}
+
+uint8_t wifi_app_get_selected_register(void)
+{
+    return s_selected_register;
+}
+
+bool wifi_app_is_selected_register_active(void)
+{
+    if (!get_state_time_was_synchronized()) return false;
+    if (s_selected_register >= NUM_REGISTERS_AV) return false;
+
+    program_register_t *r = &s_program_regs[s_selected_register];
+
+    time_t now = time(NULL);
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+
+    // Map tm_wday (0=Sun..6=Sat) to bit index (0=Mon..6=Sun)
+    uint8_t bit_index = (tm_now.tm_wday == 0) ? 6 : (tm_now.tm_wday - 1);
+    uint8_t bit = (1 << bit_index);
+    if ((r->weekdays & bit) == 0) return false;
+
+    int now_min = tm_now.tm_hour * 60 + tm_now.tm_min;
+    int start_min = r->start_hour * 60 + r->start_min;
+    int end_min = r->end_hour * 60 + r->end_min;
+
+    if (start_min == end_min) {
+        // Interpret as full-day enabled
+        return true;
+    }
+
+    if (start_min < end_min) {
+        return (now_min >= start_min && now_min < end_min);
+    } else {
+        // Overnight interval (e.g., 22:00 -> 06:00)
+        return (now_min >= start_min) || (now_min < end_min);
+    }
+}
+
+void initialize_registers(void)
+{
+    // Initialize NVS (safe to call multiple times)
+    nvs_flash_init();
+    nvs_handle_t handle;
+    if (_nvs_open(&handle, NVS_READONLY) == ESP_OK) {
+        // load selected
+        uint8_t sel = 0xFF;
+        if (nvs_get_u8(handle, "sel", &sel) == ESP_OK) {
+            s_selected_register = sel;
+        } else {
+            s_selected_register = 0xFF;
+        }
+        nvs_close(handle);
+    } else {
+        s_selected_register = 0xFF;
+    }
+
+    // Load all registers; if not present, zero them
+    for (uint8_t i = 0; i < NUM_REGISTERS_AV; ++i) {
+        program_register_t tmp;
+        esp_err_t err = load_program_register(i, &tmp);
+        if (err != ESP_OK) {
+            memset(&s_program_regs[i], 0, sizeof(program_register_t));
+        }
+    }
 }
 
 

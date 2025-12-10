@@ -248,9 +248,200 @@ select:focus {
 
 .days__title { font-weight: 600; color: var(--text); }
 
-@media (max-width: 640px) {
-    .hero { align-items: flex-start; }
-    .hero__badge { width: 100%; }
-    .actions { width: 100%; }
-    .actions .btn { flex: 1 1 auto; text-align: center; }
+/* Program Registers Table */
+.prog-wrapper {
+  overflow-x: auto;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(10, 132, 255, 0.15);
+}
+
+.prog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.prog-table thead {
+  background: linear-gradient(135deg, #0a84ff, #2c9bff);
+  color: #fff;
+  font-weight: 600;
+}
+
+.prog-table th {
+  padding: 14px 10px;
+  text-align: center;
+  border: none;
+}
+
+.prog-table td {
+  padding: 12px 10px;
+  text-align: center;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.prog-table tbody tr {
+  transition: background 0.2s ease;
+}
+
+.prog-table tbody tr:hover {
+  background: rgba(10, 132, 255, 0.08);
+}
+
+.prog-num {
+  font-weight: 700;
+  color: #0a84ff;
+  width: 30px;
+}
+
+.prog-time {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.time-input {
+  width: 35px;
+  padding: 6px 4px;
+  border: 1px solid rgba(10, 132, 255, 0.3);
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.time-input:focus {
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15);
+}
+
+.weekdays-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  min-width: 200px;
+}
+
+.day-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.day-label:hover {
+  background: rgba(10, 132, 255, 0.15);
+  border-color: rgba(10, 132, 255, 0.3);
+}
+
+.day-label input[type="checkbox"] {
+  accent-color: #0a84ff;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+.day-label span {
+  user-select: none;
+}
+
+.prog-action {
+  width: 80px;
+}
+
+.btn-save {
+  background: linear-gradient(135deg, #30d158, #1dbf47);
+  color: #0b3722;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(48, 209, 88, 0.2);
+}
+
+.btn-save:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(48, 209, 88, 0.3);
+}
+
+.btn-save:active {
+  transform: translateY(0);
+}
+
+.prog-radio {
+  width: 50px;
+}
+
+.prog-radio input[type="radio"] {
+  accent-color: #0a84ff;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.prog-buttons {
+  padding: 16px;
+  text-align: center;
+  border-top: 1px solid rgba(10, 132, 255, 0.1);
+  background: rgba(10, 132, 255, 0.04);
+  border-radius: 0 0 14px 14px;
+}
+
+.btn-deselect {
+  background: linear-gradient(135deg, #0a84ff, #2c9bff);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 6px 20px rgba(10, 132, 255, 0.25);
+}
+
+.btn-deselect:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(10, 132, 255, 0.35);
+}
+
+.btn-deselect:active {
+  transform: translateY(0);
+}
+
+/* Responsivo para pantallas pequeñas */
+@media (max-width: 768px) {
+  .weekdays-cell {
+    min-width: auto;
+    gap: 2px;
+  }
+  
+  .day-label {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+  
+  .time-input {
+    width: 30px;
+    padding: 4px 2px;
+  }
+  
+  .prog-table th,
+  .prog-table td {
+    padding: 8px 6px;
+  }
 }
